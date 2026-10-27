@@ -4,6 +4,7 @@ import shlex
 import subprocess
 import time
 from typing import List, Tuple, Dict, Any, Optional
+import httpx
 from pydantic import BaseModel
 
 from .config import (
@@ -228,6 +229,38 @@ def execute_kubectl_command(
         )
 
     cmd_display = " ".join(final_args)
+
+    # Cross-Namespace Proxy:
+    # If the target namespace is different from this pod's local namespace,
+    # forward the request to the backend service in that target namespace:
+    # http://eks-web-cli-backend.<effective_ns>.svc.cluster.local:8080
+    from .config import DEFAULT_NAMESPACE
+    if effective_ns not in ("all-namespaces", DEFAULT_NAMESPACE):
+        remote_url = f"http://eks-web-cli-backend.{effective_ns}.svc.cluster.local:8080/api/v1/cli/exec"
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post(
+                    remote_url,
+                    json={"command": raw_command, "namespace": effective_ns},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    duration_ms = (time.time() - start_time) * 1000
+                    data["duration_ms"] = round(duration_ms, 2)
+                    record_audit(
+                        username=user.username,
+                        namespace=effective_ns,
+                        command=cmd_display,
+                        status="SUCCESS" if data.get("exit_code") == 0 else "ERROR",
+                        exit_code=data.get("exit_code", 0),
+                        duration_ms=duration_ms,
+                        client_ip=client_ip,
+                        detail=f"Proxied to {effective_ns} backend agent",
+                    )
+                    return ExecutionResult(**data)
+        except Exception:
+            # Fall back to local execution or mock output if remote agent is not reachable
+            pass
     
     # Attempt real execution with kubectl in the Pod
     try:

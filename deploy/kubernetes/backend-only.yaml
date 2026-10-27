@@ -1,0 +1,82 @@
+# ==============================================================================
+# EKS Web CLI - Backend Agent (Deploy in any namespace without frontend)
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eks-web-cli-backend
+  labels:
+    app.kubernetes.io/name: eks-web-cli
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: eks-web-cli
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: eks-web-cli
+        app.kubernetes.io/component: backend
+    spec:
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: backend
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/eks-web-cli-backend:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http-backend
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: JWT_EXPIRATION_HOURS
+              value: "8"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http-backend
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http-backend
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eks-web-cli-backend
+  labels:
+    app.kubernetes.io/name: eks-web-cli
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: http-backend
+      protocol: TCP
+      name: http-backend
+  selector:
+    app.kubernetes.io/name: eks-web-cli
+    app.kubernetes.io/component: backend

@@ -26,9 +26,16 @@ def detect_namespace() -> str:
             pass
     return os.getenv("DEFAULT_NAMESPACE", "ns-4").strip()
 
-# Target namespace where this instance is deployed
+# Target namespace where this backend instance is deployed
 DEFAULT_NAMESPACE = detect_namespace()
-ALL_NAMESPACES: List[str] = [DEFAULT_NAMESPACE]
+
+# Namespaces available for selection in the Web CLI UI
+# Can be overridden with MANAGED_NAMESPACES="ns-4,application-1,application-2"
+configured_ns = os.getenv("MANAGED_NAMESPACES", "")
+if configured_ns:
+    ALL_NAMESPACES: List[str] = [ns.strip() for ns in configured_ns.split(",") if ns.strip()]
+else:
+    ALL_NAMESPACES: List[str] = [DEFAULT_NAMESPACE, "application-1", "application-2", "application-3"]
 
 # Security Guardrails:
 # 1. Destructive actions are strictly blocked:
