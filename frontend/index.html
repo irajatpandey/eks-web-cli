@@ -24,9 +24,9 @@
         <h1>EKS Web CLI</h1>
         <span class="brand-tag">Diagnostic Portal</span>
       </div>
-      <div class="cluster-pill" title="Target EKS Cluster">
+      <div class="cluster-pill" title="Target EKS Namespace">
         <span class="pulse-dot"></span>
-        <span>aws-eks-cluster</span>
+        <span id="cluster-ns-pill">ns-4</span>
       </div>
     </div>
 
@@ -36,11 +36,6 @@
         <span class="ns-label">Namespace</span>
         <select id="ns-select" class="ns-select" title="Active Target Namespace">
           <option value="ns-4">ns-4</option>
-          <option value="default">default</option>
-          <option value="kube-system">kube-system</option>
-          <option value="application-1">application-1</option>
-          <option value="application-2">application-2</option>
-          <option value="application-3">application-3</option>
         </select>
       </div>
 
@@ -65,11 +60,11 @@
       <div class="banner-left">
         <span class="banner-icon">🛡️</span>
         <div class="banner-text">
-          Guardrail Active: <strong>Cluster-Wide Diagnostic Mode</strong>. You can query any namespace. Resource deletions (<code>kubectl delete</code>) are strictly forbidden.
+          Target Namespace: <strong id="banner-ns">ns-4</strong>. Read & diagnostic mode active. Resource deletions (<code>kubectl delete</code>) are strictly forbidden.
         </div>
       </div>
       <div id="banner-namespaces" class="banner-namespaces">
-        <span class="ns-chip" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: rgba(16, 185, 129, 0.3);">All Namespaces Allowed</span>
+        <span class="ns-chip" id="banner-ns-chip" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: rgba(16, 185, 129, 0.3);">ns-4</span>
       </div>
     </section>
 

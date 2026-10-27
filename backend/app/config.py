@@ -1,5 +1,6 @@
 import os
 import secrets
+from pathlib import Path
 from typing import List, Set
 
 # JWT Settings
@@ -8,21 +9,26 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY") or secrets.token_hex(32)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "8"))
 
-# Default namespace for the portal
-DEFAULT_NAMESPACE = os.getenv("DEFAULT_NAMESPACE", "ns-4")
+def detect_namespace() -> str:
+    """
+    Auto-detects the deployed namespace:
+    1. Downward API environment variable (POD_NAMESPACE)
+    2. Kubernetes in-cluster ServiceAccount namespace file
+    3. DEFAULT_NAMESPACE environment variable or fallback to 'ns-4'
+    """
+    if os.getenv("POD_NAMESPACE"):
+        return os.getenv("POD_NAMESPACE").strip()
+    sa_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+    if sa_path.exists():
+        try:
+            return sa_path.read_text().strip()
+        except Exception:
+            pass
+    return os.getenv("DEFAULT_NAMESPACE", "ns-4").strip()
 
-# Common suggested namespaces for cluster navigation
-# Note: Any namespace can be queried; these are suggestions for the UI dropdown
-ALL_NAMESPACES: List[str] = [
-    "ns-4",
-    "default",
-    "kube-system",
-    "application-1",
-    "application-2",
-    "application-3",
-    "application-8",
-    "application-9",
-]
+# Target namespace where this instance is deployed
+DEFAULT_NAMESPACE = detect_namespace()
+ALL_NAMESPACES: List[str] = [DEFAULT_NAMESPACE]
 
 # Security Guardrails:
 # 1. Destructive actions are strictly blocked:
@@ -31,7 +37,7 @@ FORBIDDEN_VERBS: Set[str] = {
     "rm",
 }
 
-# 2. Read and diagnostic actions are allowed across all namespaces:
+# 2. Read and diagnostic actions are allowed:
 ALLOWED_VERBS: Set[str] = {
     "get",
     "describe",

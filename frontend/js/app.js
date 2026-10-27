@@ -167,8 +167,15 @@ function updateUserUI() {
 function updateTerminalPrompt() {
   const promptUser = document.getElementById("prompt-user");
   const promptNs = document.getElementById("prompt-ns");
+  const clusterPill = document.getElementById("cluster-ns-pill");
+  const bannerNs = document.getElementById("banner-ns");
+  const bannerNsChip = document.getElementById("banner-ns-chip");
+
   if (promptUser && currentUser) promptUser.textContent = currentUser.username;
   if (promptNs) promptNs.textContent = activeNamespace;
+  if (clusterPill) clusterPill.textContent = activeNamespace;
+  if (bannerNs) bannerNs.textContent = activeNamespace;
+  if (bannerNsChip) bannerNsChip.textContent = activeNamespace;
 }
 
 // Command Execution
