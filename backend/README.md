@@ -1,6 +1,6 @@
 # EKS Web CLI - Backend Service
 
-A FastAPI-based REST API service that executes securely scoped `kubectl` commands against an AWS EKS cluster, enforcing strict namespace isolation and least-privilege access.
+A FastAPI-based REST API service that executes securely filtered `kubectl` commands against an AWS EKS cluster, allowing inspection across any namespace while enforcing strict deletion prevention guardrails.
 
 ---
 
@@ -13,7 +13,7 @@ Configuration is managed via `backend/app/config.py` and can be overridden with 
 | `JWT_SECRET_KEY` | _(dynamically generated if unset)_ | Secret key used to sign JWT authentication tokens. In production, configure via secure environment variable or secret manager. |
 | `JWT_EXPIRATION_HOURS` | `8` | Lifetime of issued JWT tokens in hours. |
 | `PORT` | `8080` | Port on which the FastAPI application listens. |
-| `ALLOWED_NAMESPACES` | `ns-4,ns-5,ns-6,application-1,application-2,application-3,application-8,application-9` | Comma-separated list of managed cluster namespaces. |
+| `DEFAULT_NAMESPACE` | `ns-4` | Default namespace selected when no namespace flag is provided. |
 
 ---
 

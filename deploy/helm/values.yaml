@@ -66,15 +66,7 @@ backend:
 
   config:
     jwtExpirationHours: 8
-    allowedNamespaces:
-      - "ns-4"
-      - "ns-5"
-      - "ns-6"
-      - "application-1"
-      - "application-2"
-      - "application-3"
-      - "application-8"
-      - "application-9"
+    defaultNamespace: "ns-4"
 
 # ==============================================================================
 # Frontend Service Configuration (Nginx Alpine + Cloud Terminal Web UI)

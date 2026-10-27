@@ -1,14 +1,14 @@
-# AWS EKS Web CLI - Scoped Access Portal
+# AWS EKS Web CLI - Read & Diagnostic Portal
 
-A lightweight, secure, web-based CLI tool for AWS EKS (Elastic Kubernetes Service) that allows developers and DevOps teams to view and manage services and resources **strictly within their assigned namespaces** without requiring admin privileges or creating complex multi-tenant RoleBindings.
+A lightweight, secure, browser-based CLI tool for AWS EKS (Elastic Kubernetes Service) that allows developers and DevOps teams to view, inspect, and troubleshoot resources across **any namespace**, while enforcing strict guardrails to prevent destructive commands (`kubectl delete`) and shell injection.
 
 ---
 
 ## 🎯 Key Design Highlights
 
-* **Pure Application-Level Namespace Isolation:** Uses the pod's existing automounted ServiceAccount token (`automountServiceAccountToken: true`). Zero extra Kubernetes Role/RoleBinding manifests needed.
-* **Namespace Lockdown:** If a user is assigned to `ns-4`, they can **only** see resources in `ns-4`. Cross-namespace access (`-n ns-5`) and cluster-wide queries (`-A`, `--all-namespaces`) are blocked at the gateway.
-* **Shell-Injection Proof:** Commands are safely tokenized via `shlex` and executed with `shell=False`. Chained commands (`;`, `&&`, `|`, `>`, `` ` ``) are rejected.
+* **Open Cluster-Wide Namespace Access:** Users can query resources in any namespace (`-n <namespace>`) or cluster-wide (`-A`, `--all-namespaces`) without artificial per-user namespace locks.
+* **Deletion Guardrail:** Strictly blocks destructive commands like `kubectl delete` to prevent accidental or malicious resource deletion.
+* **Shell-Injection Proof:** Commands are tokenized via `shlex` and executed with `shell=False`. Chained commands (`;`, `&&`, `|`, `>`, `` ` ``) and unauthorized flags are rejected at the gateway.
 * **Modern Cloud Terminal UI:** Features an interactive web CLI with syntax-highlighted tables, command history (Up/Down arrows), quick action chips, and a visual service cards view.
 * **Comprehensive Audit Trail:** Logs every command, user identity, namespace, latency, and status (`SUCCESS` / `BLOCKED`) to stdout (captured by Amazon CloudWatch) and a live UI drawer.
 
@@ -26,27 +26,25 @@ A lightweight, secure, web-based CLI tool for AWS EKS (Elastic Kubernetes Servic
                ┌──────────────────────────────────────────────┴──────────────────────────────┐
                │                        WEB CLI BACKEND POD                                  │
                │                                                                             │
-               │  1. Authenticates User (JWT / SSO)                                          │
-               │  2. Resolves Allowed Namespaces:                                            │
-               │     • Alice   ──► ["ns-4"]                                                  │
-               │     • Bob     ──► ["application-1"]                                         │
-               │     • Carol   ──► ["ns-5", "ns-6"]                                          │
+               │  1. Receives Request (Any namespace allowed)                                │
                │                                                                             │
-               │  3. Command Guardrail & Sanitizer:                                          │
-               │     • Blocks `-A`, `--all-namespaces`                                       │
-               │     • Blocks `;`, `&&`, `|`, `>`                                            │
-               │     • Forces `--namespace=<allowed_ns>`                                     │
+               │  2. Security Guardrail & Sanitizer:                                         │
+               │     • 🚫 BLOCKS 'kubectl delete ...'                                        │
+               │     • 🚫 BLOCKS ';', '&&', '|', '>', '`' (Shell Injection)                  │
+               │     • 🚫 BLOCKS credential-tampering flags (--kubeconfig, --token)          │
+               │     • ✅ ALLOWS 'get', 'describe', 'logs', 'top', 'explain', etc.           │
+               │     • ✅ ALLOWS '-n <any-namespace>' and '-A' / '--all-namespaces'          │
                │                                                                             │
-               │  4. Audit Logger (CloudWatch + UI Buffer)                                   │
+               │  3. Audit Logger (CloudWatch + UI Buffer)                                   │
                └─────────────────────────────────────────────────────────────────────────────┘
                                                               ▲
                                                               │ REST API (/api/v1/cli/exec)
                                                               │
                ┌──────────────────────────────────────────────┴──────────────────────────────┐
                │                        WEB CLI FRONTEND UI                                  │
-               │  • Namespace Selector (shows only user's authorized namespaces)             │
+               │  • Open Namespace Selector (Target any namespace or -A)                     │
                │  • Interactive Terminal (history, auto-scroll, colorized badges)            │
-               │  • Quick Run Chips: [ get services ] [ get pods ] [ get endpoints ]         │
+               │  • Quick Run Chips: [ get services ] [ get pods ] [ get pods -A ]           │
                │  • Visual Service Grid Tab                                                  │
                │  • Real-time Audit Drawer                                                   │
                └─────────────────────────────────────────────────────────────────────────────┘
@@ -63,7 +61,7 @@ eks-web-cli/
 │   ├── Dockerfile            # Backend's own container build configuration
 │   ├── README.md             # Backend local setup & guide
 │   ├── app/                  # Application source code
-│   │   ├── config.py         # Config, namespaces list, user map, RBAC whitelist
+│   │   ├── config.py         # Config, suggested namespaces, guardrails
 │   │   ├── auth.py           # JWT authentication and user context
 │   │   ├── executor.py       # Command parser, sanitizer, and kubectl runner
 │   │   ├── audit.py          # CloudWatch & in-memory audit log stream
@@ -85,10 +83,10 @@ eks-web-cli/
     ├── backend.Dockerfile    # Centralized backend container build file
     ├── frontend.Dockerfile   # Centralized frontend container build file
     ├── kubernetes/
-    │   └── web-cli-deployment.yaml # Decoupled K8s manifests (Backend + Frontend)
+    │   └── web-cli-deployment.yaml # K8s manifests (Backend + Frontend)
     └── helm/                 # Production Helm chart
         ├── Chart.yaml
-        ├── values.yaml       # Decoupled backend and frontend values
+        ├── values.yaml       # Helm values
         └── templates/
             ├── deployment-backend.yaml
             ├── deployment-frontend.yaml
@@ -130,31 +128,28 @@ Open your browser at **http://localhost:3000** to access the Web CLI.
 
 ---
 
-## 🛡️ Pre-configured Test Accounts
+## 🛡️ Guardrail Rules
 
-| Username | Role | Allowed Namespaces |
+| Category | Policy | Examples |
 | :--- | :--- | :--- |
-| **alice** | Developer | `ns-4` |
-| **bob** | Payments Team | `application-1` |
-| **carol** | Analytics Team | `ns-5`, `ns-6` |
-| **dave** | Billing Team | `application-2`, `application-3` |
-| **qa-user** | QA Engineer | `application-8`, `application-9` |
-| **devops-viewer** | DevOps Viewer | All Namespaces |
+| **Namespaces** | **Open** | Any namespace (`-n <ns>`, `-A`, `--all-namespaces`) is allowed. |
+| **Inspection Actions** | **Allowed** | `get`, `describe`, `logs`, `top`, `explain`, `version`, `cluster-info` |
+| **Destructive Actions** | **Blocked** | `kubectl delete ...`, `k delete ...` are strictly rejected. |
+| **Shell Injection** | **Blocked** | `;`, `&&`, `\|`, `>`, `<`, `` ` ``, `$()`, `eval` are rejected. |
+| **Credential Tampering** | **Blocked** | `--kubeconfig`, `--token`, `--as`, `--server` are rejected. |
 
 ---
 
 ## 🐳 Docker Build
 
-### Build Backend Container (inside `backend/`):
+### Build Backend Container:
 ```bash
-cd backend
-docker build -t eks-web-cli-backend:latest .
+docker build -t eks-web-cli-backend:latest -f backend/Dockerfile backend/
 ```
 
-### Build Frontend Container (inside `frontend/`):
+### Build Frontend Container:
 ```bash
-cd frontend
-docker build -t eks-web-cli-frontend:latest .
+docker build -t eks-web-cli-frontend:latest -f frontend/Dockerfile frontend/
 ```
 
 ---
@@ -164,10 +159,12 @@ docker build -t eks-web-cli-frontend:latest .
 ### Option A: Using the Helm Chart (Recommended)
 ```bash
 helm upgrade --install eks-web-cli ./deploy/helm \
-  --namespace web-cli-system \
+  --namespace ns-4 \
   --create-namespace \
-  --set image.repository="<your-aws-account-id>.dkr.ecr.us-east-1.amazonaws.com/eks-web-cli" \
-  --set image.tag="latest"
+  --set backend.image.repository="<your-registry>/eks-web-cli-backend" \
+  --set backend.image.tag="latest" \
+  --set frontend.image.repository="<your-registry>/eks-web-cli-frontend" \
+  --set frontend.image.tag="latest"
 ```
 
 ### Option B: Using Kubernetes YAML Manifests

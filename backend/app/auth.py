@@ -9,15 +9,15 @@ from .config import (
     JWT_SECRET_KEY,
     JWT_ALGORITHM,
     JWT_EXPIRATION_HOURS,
-    USER_NAMESPACE_MAP,
+    DEFAULT_NAMESPACE,
 )
 
 security = HTTPBearer()
 
 class UserContext(BaseModel):
     username: str
-    allowed_namespaces: List[str]
-    default_namespace: str
+    allowed_namespaces: List[str] = ["*"]
+    default_namespace: str = DEFAULT_NAMESPACE
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -25,22 +25,22 @@ class TokenResponse(BaseModel):
     user: UserContext
 
 class LoginRequest(BaseModel):
-    username: str
+    username: Optional[str] = "operator"
 
-def authenticate_user(username: str) -> Optional[UserContext]:
-    """Authenticates user against configured authorized users."""
-    namespaces = USER_NAMESPACE_MAP.get(username)
-    if not namespaces:
-        return None
+def authenticate_user(username: Optional[str] = None) -> UserContext:
+    """Authenticates user with cluster-wide namespace access."""
+    clean_username = (username or "operator").strip()
+    if not clean_username:
+        clean_username = "operator"
         
     return UserContext(
-        username=username,
-        allowed_namespaces=namespaces,
-        default_namespace=namespaces[0],
+        username=clean_username,
+        allowed_namespaces=["*"],
+        default_namespace=DEFAULT_NAMESPACE,
     )
 
 def create_access_token(user: UserContext) -> str:
-    """Generates a signed JWT with user identity and allowed namespaces."""
+    """Generates a signed JWT with user identity."""
     expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
     payload = {
         "sub": user.username,
@@ -56,17 +56,12 @@ def decode_access_token(token: str) -> UserContext:
     """Decodes and validates JWT token."""
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        username: str = payload.get("sub")
-        namespaces: List[str] = payload.get("namespaces", [])
-        default_ns: str = payload.get("default_ns", namespaces[0] if namespaces else "")
-        if not username or not namespaces:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token claims: missing username or namespaces",
-            )
+        username: str = payload.get("sub", "operator")
+        namespaces: List[str] = payload.get("namespaces", ["*"])
+        default_ns: str = payload.get("default_ns", DEFAULT_NAMESPACE)
         return UserContext(
             username=username,
-            allowed_namespaces=namespaces,
+            allowed_namespaces=namespaces if namespaces else ["*"],
             default_namespace=default_ns,
         )
     except jwt.ExpiredSignatureError:

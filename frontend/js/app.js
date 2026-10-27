@@ -1,31 +1,23 @@
 /**
  * AWS EKS Web CLI - Client Application
- * Handles authentication, terminal command execution, namespace isolation, and real-time audit logs.
+ * Provides browser-based terminal access for inspecting resources across any namespace.
+ * Enforces security guardrails to strictly block deletion commands and shell injection.
  */
 
 const API_BASE = "";
 
 // State
 let authToken = localStorage.getItem("eks_token") || null;
-let currentUser = null;
+let currentUser = { username: "developer", allowed_namespaces: ["*"], default_namespace: "ns-4" };
 let activeNamespace = "ns-4";
 let commandHistory = [];
 let historyIndex = -1;
-
-// Predefined demo accounts
-const DEMO_USERS = [
-  { username: "alice", role: "Developer", namespaces: ["ns-4"] },
-  { username: "bob", role: "Payments Team", namespaces: ["application-1"] },
-  { username: "carol", role: "Analytics Team", namespaces: ["ns-5", "ns-6"] },
-  { username: "dave", role: "Billing Team", namespaces: ["application-2", "application-3"] },
-  { username: "qa-user", role: "QA Engineer", namespaces: ["application-8", "application-9"] },
-  { username: "devops-viewer", role: "DevOps Viewer", namespaces: ["All Namespaces"] },
-];
 
 // Initialize on DOM ready
 document.addEventListener("DOMContentLoaded", async () => {
   setupEventListeners();
   await ensureAuthentication();
+  await loadNamespaces();
   printWelcomeBanner();
 });
 
@@ -35,12 +27,9 @@ function setupEventListeners() {
   const runBtn = document.getElementById("btn-run-cmd");
   const clearBtn = document.getElementById("btn-clear-term");
   const nsSelect = document.getElementById("ns-select");
-  const userBadge = document.getElementById("user-badge");
   const auditBtn = document.getElementById("btn-audit-drawer");
   const closeAuditBtn = document.getElementById("btn-close-audit");
   const drawerOverlay = document.getElementById("drawer-overlay");
-  const modalOverlay = document.getElementById("user-modal-overlay");
-  const closeModalBtn = document.getElementById("btn-close-modal");
 
   // Enter key in input
   cliInput.addEventListener("keydown", (e) => {
@@ -62,11 +51,10 @@ function setupEventListeners() {
   runBtn.addEventListener("click", executeCurrentInput);
   clearBtn.addEventListener("click", clearTerminal);
 
-  // Namespace selector change
+  // Namespace dropdown change
   nsSelect.addEventListener("change", (e) => {
     activeNamespace = e.target.value;
     updateTerminalPrompt();
-    printSystemNotice(`Switched active context to namespace: [${activeNamespace}]`);
     loadVisualizerServices();
   });
 
@@ -96,13 +84,6 @@ function setupEventListeners() {
     });
   });
 
-  // User Switcher Modal
-  userBadge.addEventListener("click", openUserModal);
-  closeModalBtn.addEventListener("click", closeUserModal);
-  modalOverlay.addEventListener("click", (e) => {
-    if (e.target === modalOverlay) closeUserModal();
-  });
-
   // Audit Drawer
   auditBtn.addEventListener("click", openAuditDrawer);
   closeAuditBtn.addEventListener("click", closeAuditDrawer);
@@ -111,9 +92,8 @@ function setupEventListeners() {
 
 // Authentication
 async function ensureAuthentication() {
-  // If no token or invalid, default login as Alice (ns-4)
   if (!authToken) {
-    await loginUser("alice");
+    await loginUser("developer");
   } else {
     try {
       const res = await fetch(`${API_BASE}/api/v1/auth/me`, {
@@ -123,10 +103,10 @@ async function ensureAuthentication() {
         currentUser = await res.json();
         updateUserUI();
       } else {
-        await loginUser("alice");
+        await loginUser("developer");
       }
     } catch {
-      await loginUser("alice");
+      await loginUser("developer");
     }
   }
 }
@@ -136,51 +116,50 @@ async function loginUser(username) {
     const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username }),
+      body: JSON.stringify({ username: username || "developer" }),
     });
     if (!res.ok) throw new Error("Authentication failed");
     const data = await res.json();
     authToken = data.access_token;
     currentUser = data.user;
     localStorage.setItem("eks_token", authToken);
-    activeNamespace = currentUser.default_namespace;
+    activeNamespace = currentUser.default_namespace || "ns-4";
     updateUserUI();
-    printSystemNotice(`Authenticated as [${currentUser.username}]. Authorized namespaces: [${currentUser.allowed_namespaces.join(", ")}]`);
-    closeUserModal();
   } catch (err) {
     console.error("Login error:", err);
   }
 }
 
-// Update UI with current user permissions & namespace dropdown
+// Load cluster namespaces into dropdown
+async function loadNamespaces() {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/namespaces`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const nsSelect = document.getElementById("ns-select");
+      const list = data.allowed_namespaces || ["ns-4", "default", "kube-system"];
+      nsSelect.innerHTML = list
+        .map(
+          (ns) =>
+            `<option value="${ns}" ${ns === activeNamespace ? "selected" : ""}>${ns}</option>`
+        )
+        .join("");
+    }
+  } catch (err) {
+    console.warn("Could not fetch namespaces list:", err);
+  }
+}
+
+// Update UI
 function updateUserUI() {
   if (!currentUser) return;
 
-  // Header user info
-  document.getElementById("user-name").textContent = currentUser.username;
-  document.getElementById("user-avatar").textContent = currentUser.username.charAt(0).toUpperCase();
-
-  // Banner
-  document.getElementById("banner-user").textContent = currentUser.username;
-  const bannerNsList = document.getElementById("banner-namespaces");
-  bannerNsList.innerHTML = currentUser.allowed_namespaces
-    .map((ns) => `<span class="ns-chip">${ns}</span>`)
-    .join("");
-
-  // Populate Namespace Selector (ONLY with allowed namespaces!)
-  const nsSelect = document.getElementById("ns-select");
-  nsSelect.innerHTML = currentUser.allowed_namespaces
-    .map(
-      (ns) =>
-        `<option value="${ns}" ${ns === activeNamespace ? "selected" : ""}>${ns}</option>`
-    )
-    .join("");
-
-  // Ensure active namespace is in user's allowed list
-  if (!currentUser.allowed_namespaces.includes(activeNamespace)) {
-    activeNamespace = currentUser.allowed_namespaces[0];
-    nsSelect.value = activeNamespace;
-  }
+  const userNameEl = document.getElementById("user-name");
+  const userAvatarEl = document.getElementById("user-avatar");
+  if (userNameEl) userNameEl.textContent = currentUser.username;
+  if (userAvatarEl) userAvatarEl.textContent = currentUser.username.charAt(0).toUpperCase();
 
   updateTerminalPrompt();
 }
@@ -223,10 +202,10 @@ async function executeCurrentInput() {
     const data = await res.json();
 
     if (!res.ok) {
-      // 403 Forbidden or 400 Bad Request
       appendOutputToTerminal(data.detail || "Request failed", true, 0, false);
-    } else if (data.error) {
-      appendOutputToTerminal(data.error, true, data.duration_ms, false);
+    } else if (data.exit_code !== 0) {
+      const errText = data.error || data.output || "Command failed";
+      appendOutputToTerminal(errText, true, data.duration_ms, data.is_mock);
     } else {
       appendOutputToTerminal(data.output, false, data.duration_ms, data.is_mock);
     }
@@ -266,7 +245,7 @@ function appendOutputToTerminal(output, isError, durationMs, isMock) {
 
   let contentHtml = "";
   if (isMock) {
-    contentHtml += `<div class="mock-indicator">Cluster Preview Mode (${durationMs.toFixed(1)}ms)</div>\n`;
+    contentHtml += `<div class="mock-indicator">Cluster Simulation Mode (${durationMs.toFixed(1)}ms)</div>\n`;
   } else if (!isError && durationMs > 0) {
     contentHtml += `<div style="font-size:10px; color:#64748b; margin-bottom:4px;">Executed in ${durationMs.toFixed(1)}ms</div>`;
   }
@@ -282,31 +261,19 @@ function printWelcomeBanner() {
   welcomeDiv.className = "term-entry";
   welcomeDiv.innerHTML = `
     <div class="term-output" style="color: #94a3b8; border-left: 2px solid #38bdf8; padding-left: 12px;">
-<span style="color:#38bdf8; font-weight:700;">☸ AWS EKS Scoped Web CLI v1.0.0</span>
-Cluster: <span style="color:#e2e8f0;">aws-eks-production</span> | Connection: <span style="color:#10b981;">Active</span>
-Namespace Isolation: <span style="color:#a855f7;">Enforced</span> (Strict Least Privilege)
+<span style="color:#38bdf8; font-weight:700;">☸ AWS EKS Diagnostic Web CLI</span>
+Access Scope: <span style="color:#10b981; font-weight:600;">All Namespaces Allowed</span>
+Security Guardrail: <span style="color:#ef4444; font-weight:600;">Resource Deletions (kubectl delete) Strictly Blocked</span>
 
-Try commands:
+Quick Examples:
   • <span style="color:#38bdf8;">kubectl get services</span>
-  • <span style="color:#38bdf8;">kubectl get pods</span>
-  • <span style="color:#38bdf8;">kubectl get endpoints</span>
+  • <span style="color:#38bdf8;">kubectl get pods -A</span>
+  • <span style="color:#38bdf8;">kubectl get pods -n application-1</span>
   • <span style="color:#38bdf8;">kubectl describe service order-service</span>
+  • <span style="color:#38bdf8;">kubectl logs &lt;pod-name&gt;</span>
     </div>
   `;
   termBody.appendChild(welcomeDiv);
-}
-
-function printSystemNotice(text) {
-  const termBody = document.getElementById("terminal-body");
-  const noticeDiv = document.createElement("div");
-  noticeDiv.className = "term-entry";
-  noticeDiv.innerHTML = `
-    <div class="term-output" style="color:#38bdf8; font-size:12px; border-left-color:#38bdf8;">
-      ℹ ${escapeHtml(text)}
-    </div>
-  `;
-  termBody.appendChild(noticeDiv);
-  scrollTerminalToBottom();
 }
 
 function clearTerminal() {
@@ -350,55 +317,52 @@ async function loadVisualizerServices() {
         namespace: activeNamespace,
       }),
     });
+
     const data = await res.json();
-    if (data.output) {
-      renderServiceCards(data.output);
+    if (!res.ok || data.exit_code !== 0) {
+      container.innerHTML = `<div style="color:#ef4444; font-size:13px; font-family:var(--font-mono); grid-column:1/-1;">No services found or unable to query [${activeNamespace}].</div>`;
+      return;
     }
+
+    const lines = data.output.trim().split("\n");
+    if (lines.length <= 1) {
+      container.innerHTML = `<div style="color:#94a3b8; font-size:13px; font-family:var(--font-mono); grid-column:1/-1;">No services found in namespace [${activeNamespace}].</div>`;
+      return;
+    }
+
+    const cardsHtml = lines
+      .slice(1)
+      .map((line) => {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 5) return "";
+        const [name, type, clusterIp, externalIp, ports, age] = parts;
+        return `
+          <div class="service-card">
+            <div class="card-header">
+              <span class="svc-title">⚙ ${escapeHtml(name)}</span>
+              <span class="svc-type-badge">${escapeHtml(type)}</span>
+            </div>
+            <div class="card-meta">
+              <div><strong style="color:#94a3b8;">Cluster IP:</strong> ${escapeHtml(clusterIp)}</div>
+              <div><strong style="color:#94a3b8;">Port(s):</strong> ${escapeHtml(ports || "N/A")}</div>
+              <div><strong style="color:#94a3b8;">Age:</strong> ${escapeHtml(age || "N/A")}</div>
+            </div>
+            <div class="card-actions">
+              <button class="btn-card" onclick="runQuickCommand('kubectl describe service ${name}')">Describe</button>
+              <button class="btn-card" onclick="runQuickCommand('kubectl get endpoints ${name}')">Endpoints</button>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    container.innerHTML = cardsHtml;
   } catch (err) {
-    container.innerHTML = `<div style="color:#ef4444; font-size:13px;">Failed to load services: ${err.message}</div>`;
+    container.innerHTML = `<div style="color:#ef4444; font-size:12px;">Error: ${err.message}</div>`;
   }
-}
-
-function renderServiceCards(rawOutput) {
-  const container = document.getElementById("visualizer-container");
-  const lines = rawOutput.trim().split("\n");
-  if (lines.length <= 1) {
-    container.innerHTML = `<div style="color:#94a3b8; font-size:13px; grid-column:1/-1;">No services deployed in namespace [${activeNamespace}].</div>`;
-    return;
-  }
-
-  // Parse lines
-  const cardsHtml = lines
-    .slice(1)
-    .map((line) => {
-      const parts = line.trim().split(/\s+/);
-      if (parts.length < 5) return "";
-      const [name, type, clusterIp, externalIp, ports, age] = parts;
-      return `
-        <div class="service-card">
-          <div class="card-header">
-            <span class="svc-title">⚙ ${escapeHtml(name)}</span>
-            <span class="svc-type-badge">${escapeHtml(type)}</span>
-          </div>
-          <div class="card-meta">
-            <div><strong style="color:#94a3b8;">Cluster IP:</strong> ${escapeHtml(clusterIp)}</div>
-            <div><strong style="color:#94a3b8;">Port(s):</strong> ${escapeHtml(ports || "N/A")}</div>
-            <div><strong style="color:#94a3b8;">Age:</strong> ${escapeHtml(age || "N/A")}</div>
-          </div>
-          <div class="card-actions">
-            <button class="btn-card" onclick="runQuickCommand('kubectl describe service ${name}')">Describe</button>
-            <button class="btn-card" onclick="runQuickCommand('kubectl get endpoints ${name}')">Endpoints</button>
-          </div>
-        </div>
-      `;
-    })
-    .join("");
-
-  container.innerHTML = cardsHtml;
 }
 
 window.runQuickCommand = function (cmd) {
-  // Switch to terminal tab
   document.querySelector('.tab-btn[data-tab="terminal"]').click();
   document.getElementById("cli-input").value = cmd;
   executeCurrentInput();
@@ -418,34 +382,37 @@ function closeAuditDrawer() {
 
 async function refreshAuditLogs() {
   const container = document.getElementById("audit-list");
-  container.innerHTML = `<div style="color:#94a3b8; font-size:12px;">Fetching audit events...</div>`;
+  container.innerHTML = `<div style="color: #64748b; font-size:12px;">Loading recent audit logs...</div>`;
 
   try {
-    const res = await fetch(`${API_BASE}/api/v1/audit/logs?namespace=${activeNamespace}`, {
+    const res = await fetch(`${API_BASE}/api/v1/audit/logs`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
     if (!res.ok) throw new Error("Could not fetch audit logs");
     const logs = await res.json();
 
     if (logs.length === 0) {
-      container.innerHTML = `<div style="color:#64748b; font-size:12px;">No audit events recorded yet for [${activeNamespace}].</div>`;
+      container.innerHTML = `<div style="color: #64748b; font-size:12px;">No audit events recorded yet.</div>`;
       return;
     }
 
     container.innerHTML = logs
+      .slice()
+      .reverse()
       .map(
-        (l) => `
-        <div class="audit-card">
-          <div class="audit-header">
-            <span style="color:#94a3b8;">${new Date(l.timestamp).toLocaleTimeString()} · ${escapeHtml(l.username)}</span>
-            <span class="badge-status ${l.status.toLowerCase()}">${l.status}</span>
+        (log) => `
+        <div class="audit-item">
+          <div class="audit-top">
+            <span class="audit-cmd">${escapeHtml(log.command)}</span>
+            <span class="badge ${log.status === "SUCCESS" ? "badge-success" : "badge-blocked"}">${log.status}</span>
           </div>
-          <div class="audit-cmd">$ ${escapeHtml(l.command)}</div>
-          <div style="display:flex; justify-content:space-between; font-size:11px; color:#64748b;">
-            <span>ns: ${escapeHtml(l.namespace)}</span>
-            <span>${l.duration_ms}ms · IP: ${l.client_ip || "local"}</span>
+          <div class="audit-meta">
+            <span>User: <strong>${escapeHtml(log.username)}</strong></span>
+            <span>Namespace: <strong>${escapeHtml(log.namespace)}</strong></span>
+            <span>Duration: ${log.duration_ms}ms</span>
           </div>
-          ${l.detail ? `<div class="audit-detail">${escapeHtml(l.detail)}</div>` : ""}
+          ${log.detail ? `<div style="font-size:10px; color:#ef4444; margin-top:4px;">${escapeHtml(log.detail)}</div>` : ""}
+          <div style="font-size:10px; color:#475569; margin-top:2px;">${new Date(log.timestamp).toLocaleTimeString()}</div>
         </div>
       `
       )
@@ -454,36 +421,6 @@ async function refreshAuditLogs() {
     container.innerHTML = `<div style="color:#ef4444; font-size:12px;">Error: ${err.message}</div>`;
   }
 }
-
-// User Switcher Modal
-function openUserModal() {
-  const listContainer = document.getElementById("user-options-list");
-  listContainer.innerHTML = DEMO_USERS.map((u) => {
-    const isCurrent = currentUser && currentUser.username === u.username;
-    return `
-      <button class="user-option-btn ${isCurrent ? "active" : ""}" onclick="switchUser('${u.username}')">
-        <div class="user-info-text">
-          <strong>${u.username} ${isCurrent ? "(Active)" : ""}</strong>
-          <span>Role: ${u.role}</span>
-        </div>
-        <div style="display:flex; gap:4px; flex-wrap:wrap;">
-          ${u.namespaces.map((ns) => `<span class="ns-chip">${ns}</span>`).join("")}
-        </div>
-      </button>
-    `;
-  }).join("");
-
-  document.getElementById("user-modal-overlay").classList.add("open");
-}
-
-function closeUserModal() {
-  document.getElementById("user-modal-overlay").classList.remove("open");
-}
-
-window.switchUser = async function (username) {
-  await loginUser(username);
-  loadVisualizerServices();
-};
 
 // Simple output syntax highlighter
 function highlightKubectlOutput(text) {

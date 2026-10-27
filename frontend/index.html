@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AWS EKS Web CLI - Scoped Namespace Access Portal</title>
-  <meta name="description" content="Secure, namespace-isolated Web CLI for AWS EKS allowing users to manage services and pods within their assigned namespaces without admin privileges.">
+  <title>AWS EKS Web CLI - Read & Diagnostic Portal</title>
+  <meta name="description" content="Secure Web CLI for AWS EKS allowing users to view and troubleshoot resources across any namespace with strict deletion prevention guardrails.">
   
   <!-- Modern Typography from Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -22,28 +22,32 @@
       <div class="brand-logo" aria-label="Kubernetes Logo">☸</div>
       <div class="brand-info">
         <h1>EKS Web CLI</h1>
-        <span class="brand-tag">Scoped Portal</span>
+        <span class="brand-tag">Diagnostic Portal</span>
       </div>
       <div class="cluster-pill" title="Target EKS Cluster">
         <span class="pulse-dot"></span>
-        <span>aws-eks-production</span>
+        <span>aws-eks-cluster</span>
       </div>
     </div>
 
     <div class="nav-controls">
-      <!-- Namespace Selector (Locked to user's authorized namespaces) -->
+      <!-- Namespace Selector -->
       <div class="ns-selector-container">
         <span class="ns-label">Namespace</span>
-        <select id="ns-select" class="ns-select" title="Select Namespace">
+        <select id="ns-select" class="ns-select" title="Active Target Namespace">
           <option value="ns-4">ns-4</option>
+          <option value="default">default</option>
+          <option value="kube-system">kube-system</option>
+          <option value="application-1">application-1</option>
+          <option value="application-2">application-2</option>
+          <option value="application-3">application-3</option>
         </select>
       </div>
 
-      <!-- User Profile Badge & Quick Switcher -->
-      <div id="user-badge" class="user-badge" title="Click to switch simulated user">
-        <div id="user-avatar" class="user-avatar">A</div>
-        <span id="user-name" class="user-name">alice</span>
-        <span style="font-size: 10px; color: var(--text-dim);">▼</span>
+      <!-- User Profile Badge -->
+      <div id="user-badge" class="user-badge" title="Active Session">
+        <div id="user-avatar" class="user-avatar">D</div>
+        <span id="user-name" class="user-name">developer</span>
       </div>
 
       <!-- Real-time Audit Drawer Toggle -->
@@ -61,11 +65,11 @@
       <div class="banner-left">
         <span class="banner-icon">🛡️</span>
         <div class="banner-text">
-          Logged in as <strong id="banner-user">alice</strong>. Access is restricted strictly to assigned namespaces:
+          Guardrail Active: <strong>Cluster-Wide Diagnostic Mode</strong>. You can query any namespace. Resource deletions (<code>kubectl delete</code>) are strictly forbidden.
         </div>
       </div>
       <div id="banner-namespaces" class="banner-namespaces">
-        <span class="ns-chip">ns-4</span>
+        <span class="ns-chip" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: rgba(16, 185, 129, 0.3);">All Namespaces Allowed</span>
       </div>
     </section>
 
@@ -85,8 +89,9 @@
         <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase;">Quick Run:</span>
         <button class="quick-chip" data-cmd="kubectl get services">get services</button>
         <button class="quick-chip" data-cmd="kubectl get pods">get pods</button>
-        <button class="quick-chip" data-cmd="kubectl get endpoints">get endpoints</button>
+        <button class="quick-chip" data-cmd="kubectl get pods -A">get pods -A</button>
         <button class="quick-chip" data-cmd="kubectl get deployments">get deployments</button>
+        <button class="quick-chip" data-cmd="kubectl get endpoints">get endpoints</button>
       </div>
     </nav>
 
@@ -98,7 +103,7 @@
           <span class="dot dot-yellow"></span>
           <span class="dot dot-green"></span>
         </div>
-        <div class="terminal-title">bash — kubectl (EKS Scoped)</div>
+        <div class="terminal-title">bash — kubectl (Deletion Guardrails Active)</div>
         <div class="terminal-actions">
           <button id="btn-clear-term" class="terminal-btn" title="Clear Terminal (Ctrl+L)">Clear</button>
         </div>
@@ -112,14 +117,14 @@
       <!-- Interactive Input Prompt -->
       <div class="terminal-input-bar">
         <div class="input-prompt-label">
-          <span id="prompt-user">alice</span>@eks [<span id="prompt-ns" style="color:var(--accent-purple);">ns-4</span>] $
+          <span id="prompt-user">developer</span>@eks [<span id="prompt-ns" style="color:var(--accent-purple);">ns-4</span>] $
         </div>
         <div class="cli-input-wrapper">
           <input 
             type="text" 
             id="cli-input" 
             class="cli-input" 
-            placeholder="kubectl get services (or try forbidden: kubectl get services -n ns-5)" 
+            placeholder="kubectl get services (try: kubectl get pods -A, kubectl get svc -n application-1)" 
             autocomplete="off" 
             spellcheck="false"
             aria-label="Command Line Input"
@@ -151,22 +156,6 @@
       <!-- Audit entries populated by JavaScript -->
     </div>
   </aside>
-
-  <!-- User Switcher Modal (Allows testing isolation between alice, bob, carol, etc.) -->
-  <div id="user-modal-overlay" class="modal-overlay">
-    <div class="user-switch-card">
-      <div class="modal-header">
-        <h3 style="font-size: 16px; color:#fff;">Switch Test User</h3>
-        <button id="btn-close-modal" class="btn-icon" aria-label="Close Modal">✕</button>
-      </div>
-      <div style="padding: 12px 24px 0; font-size: 13px; color: var(--text-muted);">
-        Select a simulated user to verify that namespace permissions are strictly enforced:
-      </div>
-      <div id="user-options-list" class="modal-body">
-        <!-- User options populated by JavaScript -->
-      </div>
-    </div>
-  </div>
 
   <!-- Application Script -->
   <script src="/static/js/app.js"></script>

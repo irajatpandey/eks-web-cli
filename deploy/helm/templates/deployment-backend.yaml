@@ -35,8 +35,8 @@ spec:
               containerPort: {{ .Values.backend.service.port }}
               protocol: TCP
           env:
-            - name: ALLOWED_NAMESPACES
-              value: "{{ join "," .Values.backend.config.allowedNamespaces }}"
+            - name: DEFAULT_NAMESPACE
+              value: "{{ .Values.backend.config.defaultNamespace | default "ns-4" }}"
             - name: JWT_EXPIRATION_HOURS
               value: "{{ .Values.backend.config.jwtExpirationHours }}"
           {{- with .Values.backend.livenessProbe }}

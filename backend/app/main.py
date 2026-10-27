@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from .config import USER_NAMESPACE_MAP
+from .config import ALL_NAMESPACES
 from .auth import (
     UserContext,
     LoginRequest,
@@ -20,8 +20,8 @@ from .executor import execute_kubectl_command, ExecutionResult
 from .audit import get_audit_logs, AuditEntry
 
 app = FastAPI(
-    title="AWS EKS Web CLI - Scoped Access Portal",
-    description="Secure, namespace-isolated Web CLI for AWS EKS without cluster-admin privileges.",
+    title="AWS EKS Web CLI - Read & Diagnostic Access Portal",
+    description="Browser-based Web CLI for AWS EKS with deletion prevention guardrails.",
     version="1.0.0",
 )
 
@@ -46,27 +46,22 @@ class NamespaceListResponse(BaseModel):
 # API Routes
 @app.post("/api/v1/auth/login", response_model=TokenResponse)
 async def login(req: LoginRequest):
-    """Authenticates the user and returns a signed JWT with scoped namespaces."""
+    """Authenticates the user and returns a signed JWT."""
     user = authenticate_user(req.username)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unknown or unauthorized user. Configured users: alice, bob, carol, dave, qa-user, devops-viewer.",
-        )
     token = create_access_token(user)
     return TokenResponse(access_token=token, user=user)
 
 @app.get("/api/v1/auth/me", response_model=UserContext)
 async def get_current_user_profile(user: UserContext = Depends(get_current_user)):
-    """Returns the authenticated user's profile and allowed namespaces."""
+    """Returns the authenticated user's profile."""
     return user
 
 @app.get("/api/v1/namespaces", response_model=NamespaceListResponse)
 async def list_user_namespaces(user: UserContext = Depends(get_current_user)):
-    """Returns the list of namespaces the authenticated user is allowed to access."""
+    """Returns the list of common cluster namespaces for quick navigation."""
     return NamespaceListResponse(
         username=user.username,
-        allowed_namespaces=user.allowed_namespaces,
+        allowed_namespaces=ALL_NAMESPACES,
         active_namespace=user.default_namespace,
     )
 
@@ -77,19 +72,11 @@ async def execute_command(
     user: UserContext = Depends(get_current_user),
 ):
     """
-    Executes a kubectl command securely scoped to the user's namespace.
-    Strictly forbids accessing unauthorized namespaces or using cluster-wide flags.
+    Executes a kubectl command securely.
+    Allows queries across any namespace while strictly blocking delete and shell injection.
     """
     client_ip = request.client.host if request.client else "unknown"
     
-    # Boundary check: ensure target namespace is in user's allowed list
-    if req.namespace not in user.allowed_namespaces:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access Denied: You do not have permission to access namespace '{req.namespace}'. "
-                   f"Your authorized namespaces: {', '.join(user.allowed_namespaces)}",
-        )
-        
     result = execute_kubectl_command(
         raw_command=req.command,
         user=user,
@@ -103,17 +90,8 @@ async def fetch_audit_logs(
     namespace: Optional[str] = None,
     user: UserContext = Depends(get_current_user),
 ):
-    """Fetches audit logs filtered by the user's allowed namespaces."""
-    # Enforce namespace isolation on audit logs as well
-    if namespace and namespace not in user.allowed_namespaces:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access Denied: You cannot view audit logs for namespace '{namespace}'.",
-        )
-        
-    # If no namespace specified, pick first allowed namespace
-    ns_to_query = namespace or user.default_namespace
-    return get_audit_logs(namespace=ns_to_query)
+    """Fetches real-time audit logs."""
+    return get_audit_logs(namespace=namespace)
 
 @app.get("/healthz")
 async def health_check():

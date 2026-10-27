@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from .config import (
     ALLOWED_VERBS,
-    ALLOWED_RESOURCES,
+    FORBIDDEN_VERBS,
     FORBIDDEN_FLAGS,
 )
 from .auth import UserContext
@@ -95,9 +95,9 @@ def validate_and_sanitize_command(
     """
     Validates that the command:
     1. Contains no shell injection / chaining characters.
-    2. Uses an authorized kubectl verb and resource.
-    3. Strictly enforces the user's namespace boundary.
-    4. Injects or validates the -n/--namespace argument.
+    2. Strictly forbids destructive actions like 'delete'.
+    3. Allows read and diagnostic actions across ANY namespace.
+    4. Supports cluster-wide queries (-A, --all-namespaces).
     
     Returns: (sanitized_args_list, effective_namespace)
     """
@@ -127,30 +127,42 @@ def validate_and_sanitize_command(
         tokens = tokens[1:]
         
     if not tokens:
-        raise ValueError("Missing kubectl action (e.g., 'get services', 'get pods').")
+        raise ValueError("Missing kubectl action (e.g., 'get pods', 'describe service').")
         
     verb = tokens[0].lower()
     
-    # Check 2: Allowed verbs
+    # Check 2: Guardrail - strictly block delete commands
+    if verb in FORBIDDEN_VERBS or verb == "delete":
+        raise ValueError(
+            "Guardrail violation: Action 'delete' is strictly forbidden. Mutating resource deletion is blocked."
+        )
+        
+    # Check 3: Allowed actions
     if verb not in ALLOWED_VERBS:
         raise ValueError(
             f"Action '{verb}' is not permitted. Allowed actions: {', '.join(sorted(ALLOWED_VERBS))}."
         )
         
-    # Check 3: Forbidden flags
+    # Check 4: Forbidden flags (credential / cluster tampering)
     for token in tokens:
         if token in FORBIDDEN_FLAGS:
             raise ValueError(
-                f"Flag '{token}' is forbidden. Cluster-wide queries and privilege escalation are blocked."
+                f"Flag '{token}' is forbidden for security reasons."
             )
             
-    # Check 4: Extract and validate namespace from user input
+    # Check 5: Extract namespace from user input (supports -A, --all-namespaces, -n, --namespace)
+    is_all_namespaces = False
     extracted_ns: Optional[str] = None
     cleaned_tokens: List[str] = []
     i = 0
     while i < len(tokens):
         t = tokens[i]
-        if t in ("-n", "--namespace"):
+        if t in ("-A", "--all-namespaces"):
+            is_all_namespaces = True
+            cleaned_tokens.append(t)
+            i += 1
+            continue
+        elif t in ("-n", "--namespace"):
             if i + 1 < len(tokens):
                 extracted_ns = tokens[i + 1]
                 i += 2
@@ -169,35 +181,14 @@ def validate_and_sanitize_command(
             cleaned_tokens.append(t)
             i += 1
             
-    # Namespace Boundary Enforcement:
-    # If user provided a namespace in their CLI text, it MUST be in their allowed_namespaces
-    effective_ns = target_namespace
-    if extracted_ns:
-        if extracted_ns not in user.allowed_namespaces:
-            raise PermissionError(
-                f"Access Denied: You are not authorized to query namespace '{extracted_ns}'. "
-                f"Your authorized namespace(s): {', '.join(user.allowed_namespaces)}"
-            )
-        effective_ns = extracted_ns
+    # Effective namespace: Anyone can access any namespace!
+    if is_all_namespaces:
+        effective_ns = "all-namespaces"
+        final_args = ["kubectl", verb] + cleaned_tokens[1:]
     else:
-        # User did not specify -n in CLI text; verify target_namespace is in user's allowed list
-        if target_namespace not in user.allowed_namespaces:
-            raise PermissionError(
-                f"Access Denied: You are not authorized for namespace '{target_namespace}'. "
-                f"Your authorized namespace(s): {', '.join(user.allowed_namespaces)}"
-            )
-            
-    # Check 5: For 'get' and 'describe', validate resource type
-    if verb in ("get", "describe") and len(cleaned_tokens) > 1:
-        resource = cleaned_tokens[1].lower().split("/")[0]
-        # Ignore options starting with '-'
-        if not resource.startswith("-") and resource not in ALLOWED_RESOURCES:
-            raise ValueError(
-                f"Resource type '{resource}' is not in the allowed list: {', '.join(sorted(ALLOWED_RESOURCES))}."
-            )
-            
-    # Construct strictly scoped command
-    final_args = ["kubectl", verb] + cleaned_tokens[1:] + ["--namespace", effective_ns]
+        effective_ns = extracted_ns if extracted_ns else (target_namespace or "default")
+        final_args = ["kubectl", verb] + cleaned_tokens[1:] + ["--namespace", effective_ns]
+        
     return final_args, effective_ns
 
 
