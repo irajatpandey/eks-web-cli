@@ -1,0 +1,149 @@
+# Global Helm settings
+nameOverride: ""
+fullnameOverride: ""
+imagePullSecrets: []
+
+# ==============================================================================
+# Backend Service Configuration (Python FastAPI + Scoped kubectl)
+# ==============================================================================
+backend:
+  enabled: true
+  replicaCount: 2
+
+  image:
+    repository: 123456789012.dkr.ecr.us-east-1.amazonaws.com/eks-web-cli-backend
+    pullPolicy: IfNotPresent
+    tag: "1.0.0"
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  # Automount ServiceAccount token so the backend pod can query EKS
+  serviceAccount:
+    create: false
+    name: "default"
+    automount: true
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    fsGroup: 10001
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+        - ALL
+
+  # Health Check Probes
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: http-backend
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: http-backend
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 2
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  config:
+    jwtExpirationHours: 8
+    allowedNamespaces:
+      - "ns-4"
+      - "ns-5"
+      - "ns-6"
+      - "application-1"
+      - "application-2"
+      - "application-3"
+      - "application-8"
+      - "application-9"
+
+# ==============================================================================
+# Frontend Service Configuration (Nginx Alpine + Cloud Terminal Web UI)
+# ==============================================================================
+frontend:
+  enabled: true
+  replicaCount: 2
+
+  image:
+    repository: 123456789012.dkr.ecr.us-east-1.amazonaws.com/eks-web-cli-frontend
+    pullPolicy: IfNotPresent
+    tag: "1.0.0"
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    fsGroup: 101
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+        - ALL
+
+  # Health Check Probes
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: http-frontend
+    initialDelaySeconds: 5
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: http-frontend
+    initialDelaySeconds: 3
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 2
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# ==============================================================================
+# Ingress Configuration (AWS ALB / Nginx routing traffic to frontend)
+# ==============================================================================
+ingress:
+  enabled: true
+  className: "alb"
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+  hosts:
+    - host: cli.eks.company.internal
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []

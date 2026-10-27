@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AWS EKS Web CLI - Scoped Namespace Access Portal</title>
+  <meta name="description" content="Secure, namespace-isolated Web CLI for AWS EKS allowing users to manage services and pods within their assigned namespaces without admin privileges.">
+  
+  <!-- Modern Typography from Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Design System Stylesheet -->
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="top-navbar">
+    <div class="brand-section">
+      <div class="brand-logo" aria-label="Kubernetes Logo">☸</div>
+      <div class="brand-info">
+        <h1>EKS Web CLI</h1>
+        <span class="brand-tag">Scoped Portal</span>
+      </div>
+      <div class="cluster-pill" title="Target EKS Cluster">
+        <span class="pulse-dot"></span>
+        <span>aws-eks-production</span>
+      </div>
+    </div>
+
+    <div class="nav-controls">
+      <!-- Namespace Selector (Locked to user's authorized namespaces) -->
+      <div class="ns-selector-container">
+        <span class="ns-label">Namespace</span>
+        <select id="ns-select" class="ns-select" title="Select Namespace">
+          <option value="ns-4">ns-4</option>
+        </select>
+      </div>
+
+      <!-- User Profile Badge & Quick Switcher -->
+      <div id="user-badge" class="user-badge" title="Click to switch simulated user">
+        <div id="user-avatar" class="user-avatar">A</div>
+        <span id="user-name" class="user-name">alice</span>
+        <span style="font-size: 10px; color: var(--text-dim);">▼</span>
+      </div>
+
+      <!-- Real-time Audit Drawer Toggle -->
+      <button id="btn-audit-drawer" class="btn-icon" title="View Audit Logs" aria-label="Audit Logs">
+        📜
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Application Container -->
+  <main class="app-container">
+
+    <!-- Security & RBAC Boundary Banner -->
+    <section class="security-banner" aria-label="Security Boundary Info">
+      <div class="banner-left">
+        <span class="banner-icon">🛡️</span>
+        <div class="banner-text">
+          Logged in as <strong id="banner-user">alice</strong>. Access is restricted strictly to assigned namespaces:
+        </div>
+      </div>
+      <div id="banner-namespaces" class="banner-namespaces">
+        <span class="ns-chip">ns-4</span>
+      </div>
+    </section>
+
+    <!-- Tab Bar: Terminal vs Visualizer -->
+    <nav class="tab-bar" aria-label="Tool Views">
+      <div class="tabs-group">
+        <button class="tab-btn active" data-tab="terminal" id="tab-terminal">
+          <span>⌨️</span> Web Terminal
+        </button>
+        <button class="tab-btn" data-tab="visualizer" id="tab-visualizer">
+          <span>📦</span> Services Grid
+        </button>
+      </div>
+
+      <!-- Quick Action Commands -->
+      <div class="quick-actions" aria-label="Quick Actions">
+        <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase;">Quick Run:</span>
+        <button class="quick-chip" data-cmd="kubectl get services">get services</button>
+        <button class="quick-chip" data-cmd="kubectl get pods">get pods</button>
+        <button class="quick-chip" data-cmd="kubectl get endpoints">get endpoints</button>
+        <button class="quick-chip" data-cmd="kubectl get deployments">get deployments</button>
+      </div>
+    </nav>
+
+    <!-- TAB 1: Terminal View -->
+    <section id="terminal-view" class="terminal-frame">
+      <div class="terminal-header">
+        <div class="window-dots">
+          <span class="dot dot-red"></span>
+          <span class="dot dot-yellow"></span>
+          <span class="dot dot-green"></span>
+        </div>
+        <div class="terminal-title">bash — kubectl (EKS Scoped)</div>
+        <div class="terminal-actions">
+          <button id="btn-clear-term" class="terminal-btn" title="Clear Terminal (Ctrl+L)">Clear</button>
+        </div>
+      </div>
+
+      <!-- Terminal Output Scroll Area -->
+      <div id="terminal-body" class="terminal-body">
+        <!-- Rendered terminal output entries will appear here -->
+      </div>
+
+      <!-- Interactive Input Prompt -->
+      <div class="terminal-input-bar">
+        <div class="input-prompt-label">
+          <span id="prompt-user">alice</span>@eks [<span id="prompt-ns" style="color:var(--accent-purple);">ns-4</span>] $
+        </div>
+        <div class="cli-input-wrapper">
+          <input 
+            type="text" 
+            id="cli-input" 
+            class="cli-input" 
+            placeholder="kubectl get services (or try forbidden: kubectl get services -n ns-5)" 
+            autocomplete="off" 
+            spellcheck="false"
+            aria-label="Command Line Input"
+          />
+        </div>
+        <button id="btn-run-cmd" class="btn-run">
+          Run ↵
+        </button>
+      </div>
+    </section>
+
+    <!-- TAB 2: Visual Services Grid -->
+    <section id="visualizer-view" class="visualizer-container">
+      <div id="visualizer-container" class="visualizer-container active">
+        <!-- Service cards populated by JavaScript -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Side Drawer: Real-time Audit Logs -->
+  <div id="drawer-overlay" class="drawer-overlay"></div>
+  <aside id="audit-drawer" class="audit-drawer" aria-label="Audit Drawer">
+    <div class="drawer-header">
+      <h3>Audit Log Trail</h3>
+      <button id="btn-close-audit" class="btn-icon" aria-label="Close Audit Drawer">✕</button>
+    </div>
+    <div id="audit-list" class="drawer-body">
+      <!-- Audit entries populated by JavaScript -->
+    </div>
+  </aside>
+
+  <!-- User Switcher Modal (Allows testing isolation between alice, bob, carol, etc.) -->
+  <div id="user-modal-overlay" class="modal-overlay">
+    <div class="user-switch-card">
+      <div class="modal-header">
+        <h3 style="font-size: 16px; color:#fff;">Switch Test User</h3>
+        <button id="btn-close-modal" class="btn-icon" aria-label="Close Modal">✕</button>
+      </div>
+      <div style="padding: 12px 24px 0; font-size: 13px; color: var(--text-muted);">
+        Select a simulated user to verify that namespace permissions are strictly enforced:
+      </div>
+      <div id="user-options-list" class="modal-body">
+        <!-- User options populated by JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Application Script -->
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

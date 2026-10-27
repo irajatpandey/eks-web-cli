@@ -1,0 +1,21 @@
+{{- if .Values.backend.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "eks-web-cli.fullname" . }}-backend
+  labels:
+    app.kubernetes.io/name: {{ include "eks-web-cli.name" . }}-backend
+    helm.sh/chart: {{ include "eks-web-cli.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: backend
+spec:
+  type: {{ .Values.backend.service.type }}
+  ports:
+    - port: {{ .Values.backend.service.port }}
+      targetPort: http-backend
+      protocol: TCP
+      name: http-backend
+  selector:
+    app.kubernetes.io/name: {{ include "eks-web-cli.name" . }}-backend
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

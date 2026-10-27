@@ -1,0 +1,8 @@
+{
+  "appName": "EKS Web CLI",
+  "version": "1.0.0",
+  "apiBaseUrl": "",
+  "clusterName": "aws-eks-production",
+  "auditRefreshIntervalMs": 5000,
+  "defaultNamespace": "ns-4"
+}

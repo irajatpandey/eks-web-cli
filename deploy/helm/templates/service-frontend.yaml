@@ -1,0 +1,21 @@
+{{- if .Values.frontend.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "eks-web-cli.fullname" . }}-frontend
+  labels:
+    app.kubernetes.io/name: {{ include "eks-web-cli.name" . }}-frontend
+    helm.sh/chart: {{ include "eks-web-cli.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: frontend
+spec:
+  type: {{ .Values.frontend.service.type }}
+  ports:
+    - port: {{ .Values.frontend.service.port }}
+      targetPort: http-frontend
+      protocol: TCP
+      name: http-frontend
+  selector:
+    app.kubernetes.io/name: {{ include "eks-web-cli.name" . }}-frontend
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

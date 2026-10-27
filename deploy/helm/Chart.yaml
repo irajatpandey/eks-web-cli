@@ -1,0 +1,14 @@
+apiVersion: v2
+name: eks-web-cli
+description: A Helm chart for deploying the Scoped EKS Web CLI portal on AWS EKS
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - kubernetes
+  - aws-eks
+  - web-cli
+  - security
+  - rbac
+maintainers:
+  - name: DevOps Engineering Team
