@@ -80,3 +80,4 @@ spec:
   selector:
     app.kubernetes.io/name: eks-web-cli
     app.kubernetes.io/component: backend
+

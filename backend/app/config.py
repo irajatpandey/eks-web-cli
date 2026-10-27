@@ -16,15 +16,22 @@ def detect_namespace() -> str:
     2. Kubernetes in-cluster ServiceAccount namespace file
     3. DEFAULT_NAMESPACE environment variable or fallback to 'ns-4'
     """
-    if os.getenv("POD_NAMESPACE"):
-        return os.getenv("POD_NAMESPACE").strip()
+    pod_ns = os.getenv("POD_NAMESPACE")
+    if pod_ns:
+        return pod_ns.strip()
+
     sa_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
     if sa_path.exists():
         try:
             return sa_path.read_text().strip()
         except Exception:
             pass
-    return os.getenv("DEFAULT_NAMESPACE", "ns-4").strip()
+
+    default_ns = os.getenv("DEFAULT_NAMESPACE")
+    if default_ns:
+        return default_ns.strip()
+
+    return "ns-4"
 
 # Target namespace where this backend instance is deployed
 DEFAULT_NAMESPACE = detect_namespace()
